@@ -50,9 +50,6 @@ def get_closest_close(hist, target_date):
         target_dt = pd.to_datetime(target_date).tz_localize(hist.index.tz)
     else:
         target_dt = pd.to_datetime(target_date)
-
-    print(target_date)
-    print("\n")
     
     past_dates = hist[hist.index <= target_dt]
     if past_dates.empty:
@@ -71,6 +68,20 @@ def calculate_single_return(symbol):
         except Exception:
             import pandas as pd
             hist = pd.DataFrame()
+
+        # FALLBACK: Yahoo Finance often returns only 1 day of data for "-SM" symbols.
+        # We try to strip "-SM" and fetch the regular symbol which usually has the full history.
+        if len(hist) < 2 and "-SM" in symbol:
+            alt_symbol = symbol.replace("-SM", "")
+            alt_ticker = yf.Ticker(alt_symbol)
+            try:
+                alt_hist = alt_ticker.history(period="1mo")
+                if len(alt_hist) >= 2:
+                    hist = alt_hist
+                    ticker = alt_ticker
+            except Exception:
+                pass
+
         c_date, close_current = get_closest_close(hist, current_date)
         l_date, close_last = get_closest_close(hist, last_date)
 
