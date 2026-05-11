@@ -25,6 +25,8 @@ from stocks_manager import (
     handle_add_symbol,
     handle_remove_symbol,
 )
+from birthday_alert import run_birthday_alert
+
 
 # ==========================================
 # SERVERLESS HANDLER
@@ -98,6 +100,19 @@ class handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_cors(500, 'text/plain',
                                 f"Error running weekly report: {str(e)}".encode())
+            return
+
+        # ---------------------------------------------------------
+        # ROUTE: /api/birthday_alert
+        # ---------------------------------------------------------
+        if path.endswith('/birthday_alert') or 'action=birthday_alert' in parsed_path.query:
+            try:
+                resp_data = run_birthday_alert()
+                self._send_cors(200, 'application/json',
+                                json.dumps(resp_data, indent=2).encode('utf-8'))
+            except Exception as e:
+                self._send_cors(500, 'text/plain',
+                                f"Error running birthday alert: {str(e)}".encode())
             return
 
         # ---------------------------------------------------------
