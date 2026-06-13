@@ -94,98 +94,72 @@ def load_symbols() -> list[str]:
     return load_indian_symbols() + load_global_symbols()
 
 
-def load_intraday_stock_emails() -> list[str]:
-    """Load intraday stock alert emails from MongoDB; fallback to TO_EMAIL env."""
+def load_indian_stock_emails() -> list[str]:
+    """Load Indian stock alert emails (merged intraday + weekly)."""
     db_col = _get_db()
     if db_col is not None:
         try:
-            doc = db_col.find_one({"key": "intraday_stock_emails"})
+            doc = db_col.find_one({"key": "indian_stock_emails"})
             if doc and "list" in doc and doc["list"]:
                 return doc["list"]
-        except Exception as e:
-            print(f"Error loading stock emails from MongoDB: {e}")
-    # Fallback
-    return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
-
-
-def load_intraday_indian_stock_emails() -> list[str]:
-    """Load Indian intraday stock alert emails; fallback to old combined list."""
-    db_col = _get_db()
-    if db_col is not None:
-        try:
-            doc = db_col.find_one({"key": "intraday_stock_indian_emails"})
-            if doc and "list" in doc and doc["list"]:
-                return doc["list"]
+            
+            # Fallback/migration: merge from intraday_stock_indian_emails and weekly_indian_emails
+            intraday_doc = db_col.find_one({"key": "intraday_stock_indian_emails"})
+            weekly_doc = db_col.find_one({"key": "weekly_indian_emails"})
+            merged = []
+            if intraday_doc and "list" in intraday_doc and intraday_doc["list"]:
+                merged.extend(intraday_doc["list"])
+            if weekly_doc and "list" in weekly_doc and weekly_doc["list"]:
+                merged.extend(weekly_doc["list"])
+            
+            # Remove duplicates while keeping order
+            seen = set()
+            merged_unique = [x for x in merged if not (x in seen or seen.add(x))]
+            if merged_unique:
+                return merged_unique
         except Exception as e:
             print(f"Error loading Indian stock emails from MongoDB: {e}")
-    return load_intraday_stock_emails()
+            
+    # Ultimate fallback to legacy/environment
+    fallback_emails = []
+    for env_key in ["TO_EMAIL"]:
+        val = os.environ.get(env_key, "")
+        fallback_emails.extend([e.strip() for e in val.split(",") if e.strip()])
+    return list(set(fallback_emails))
 
 
-def load_intraday_global_stock_emails() -> list[str]:
-    """Load Global intraday stock alert emails; fallback to old combined list."""
+def load_global_stock_emails() -> list[str]:
+    """Load Global stock alert emails (merged intraday + weekly)."""
     db_col = _get_db()
     if db_col is not None:
         try:
-            doc = db_col.find_one({"key": "intraday_stock_global_emails"})
+            doc = db_col.find_one({"key": "global_stock_emails"})
             if doc and "list" in doc and doc["list"]:
                 return doc["list"]
+            
+            # Fallback/migration: merge from intraday_stock_global_emails and weekly_global_emails
+            intraday_doc = db_col.find_one({"key": "intraday_stock_global_emails"})
+            weekly_doc = db_col.find_one({"key": "weekly_global_emails"})
+            merged = []
+            if intraday_doc and "list" in intraday_doc and intraday_doc["list"]:
+                merged.extend(intraday_doc["list"])
+            if weekly_doc and "list" in weekly_doc and weekly_doc["list"]:
+                merged.extend(weekly_doc["list"])
+            
+            # Remove duplicates while keeping order
+            seen = set()
+            merged_unique = [x for x in merged if not (x in seen or seen.add(x))]
+            if merged_unique:
+                return merged_unique
         except Exception as e:
             print(f"Error loading Global stock emails from MongoDB: {e}")
-    return load_intraday_stock_emails()
-
-
-def load_intraday_index_emails() -> list[str]:
-    """Load intraday index alert emails from MongoDB; fallback to TO_EMAIL env."""
-    db_col = _get_db()
-    if db_col is not None:
-        try:
-            doc = db_col.find_one({"key": "intraday_index_emails"})
-            if doc and "list" in doc and doc["list"]:
-                return doc["list"]
-        except Exception as e:
-            print(f"Error loading index emails from MongoDB: {e}")
-    # Fallback
-    return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
-
-
-def load_weekly_emails() -> list[str]:
-    """Load weekly report emails from MongoDB; fallback to TO_EMAIL env."""
-    db_col = _get_db()
-    if db_col is not None:
-        try:
-            doc = db_col.find_one({"key": "weekly_emails"})
-            if doc and "list" in doc and doc["list"]:
-                return doc["list"]
-        except Exception as e:
-            print(f"Error loading weekly emails from MongoDB: {e}")
-    # Fallback
-    return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
-
-
-def load_weekly_indian_emails() -> list[str]:
-    """Load Indian weekly report emails; fallback to old combined list."""
-    db_col = _get_db()
-    if db_col is not None:
-        try:
-            doc = db_col.find_one({"key": "weekly_indian_emails"})
-            if doc and "list" in doc and doc["list"]:
-                return doc["list"]
-        except Exception as e:
-            print(f"Error loading Indian weekly emails from MongoDB: {e}")
-    return load_weekly_emails()
-
-
-def load_weekly_global_emails() -> list[str]:
-    """Load Global weekly report emails; fallback to old combined list."""
-    db_col = _get_db()
-    if db_col is not None:
-        try:
-            doc = db_col.find_one({"key": "weekly_global_emails"})
-            if doc and "list" in doc and doc["list"]:
-                return doc["list"]
-        except Exception as e:
-            print(f"Error loading Global weekly emails from MongoDB: {e}")
-    return load_weekly_emails()
+            
+    # Ultimate fallback to legacy/environment
+    fallback_emails = []
+    for env_key in ["TO_EMAIL"]:
+        val = os.environ.get(env_key, "")
+        fallback_emails.extend([e.strip() for e in val.split(",") if e.strip()])
+    return list(set(fallback_emails))
 
 
 def _save_indian_symbols(symbols: list[str]):

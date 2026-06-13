@@ -18,8 +18,8 @@ load_dotenv(_ENV_PATH)
 from stocks_manager import (
     load_indian_symbols,
     load_global_symbols,
-    load_weekly_indian_emails,
-    load_weekly_global_emails
+    load_indian_stock_emails,
+    load_global_stock_emails
 )
 
 
@@ -245,7 +245,7 @@ def run_weekly_report():
             print("Formatting Indian email...")
             indian_html = format_html_email(indian_results, "Weekly Indian Stock Returns")
             print("Sending Indian email...")
-            to_indian_emails = load_weekly_indian_emails()
+            to_indian_emails = load_indian_stock_emails()
             indian_sent, indian_msg = send_email(indian_html, to_indian_emails, "Weekly Indian Stock Returns")
 
         print("Fetching Global weekly returns...")
@@ -258,7 +258,7 @@ def run_weekly_report():
             print("Formatting Global email...")
             global_html = format_html_email(global_results, "Weekly Global Stock Returns")
             print("Sending Global email...")
-            to_global_emails = load_weekly_global_emails()
+            to_global_emails = load_global_stock_emails()
             global_sent, global_msg = send_email(global_html, to_global_emails, "Weekly Global Stock Returns")
 
         response_data = {

@@ -31,9 +31,8 @@ import requests
 from stocks_manager import (
     load_indian_symbols,
     load_global_symbols,
-    load_intraday_indian_stock_emails,
-    load_intraday_global_stock_emails,
-    load_intraday_index_emails
+    load_indian_stock_emails,
+    load_global_stock_emails
 )
 
 # ── Load env vars ──────────────────────────────────────────────────────────────
@@ -51,7 +50,7 @@ _LAST_EMAIL_SENT_TIME = {}
 # ==========================================
 # CONFIGURATION
 # ==========================================
-INDEX_SYMBOLS = ["^NSEI", "NIFTY_SME_EMERGE.NS"]
+INDEX_SYMBOLS = []
 
 TIMEZONE = "Asia/Kolkata"
 
@@ -338,25 +337,19 @@ def run_hourly_alert():
     # ── Evaluate which symbols breach thresholds ──────────────────────
     alerts = evaluate_alerts(all_data, today)
 
-    # ── Separate stock and index alerts ────────────────────────────────────
+    # ── Separate stock alerts ────────────────────────────────────
     indian_alerts = [a for a in alerts if a["symbol"] in indian_symbols]
     global_alerts = [a for a in alerts if a["symbol"] in global_symbols]
-    index_alerts = [a for a in alerts if a["symbol"] in INDEX_SYMBOLS]
 
     indian_email_sent = False
     if indian_alerts:
-        to_emails = load_intraday_indian_stock_emails()
+        to_emails = load_indian_stock_emails()
         indian_email_sent = send_hourly_alert_email(indian_alerts, now, to_emails, "Indian Stock")
 
     global_email_sent = False
     if global_alerts:
-        to_emails = load_intraday_global_stock_emails()
+        to_emails = load_global_stock_emails()
         global_email_sent = send_hourly_alert_email(global_alerts, now, to_emails, "Global Stock")
-
-    index_email_sent = False
-    if index_alerts:
-        to_emails = load_intraday_index_emails()
-        index_email_sent = send_hourly_alert_email(index_alerts, now, to_emails, "Index")
 
     response = {
         "status":          "ok",
@@ -365,10 +358,8 @@ def run_hourly_alert():
         "alerts_fired":    len(alerts),
         "indian_alerts":   len(indian_alerts),
         "global_alerts":   len(global_alerts),
-        "index_alerts":    len(index_alerts),
         "indian_email_sent": indian_email_sent,
         "global_email_sent": global_email_sent,
-        "index_email_sent": index_email_sent,
     }
     return response
 
