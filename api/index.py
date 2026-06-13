@@ -139,7 +139,8 @@ class handler(BaseHTTPRequestHandler):
                 raw = self.rfile.read(length) if length else b'{}'
                 data = json.loads(raw)
                 symbol = data.get('symbol', '')
-                status, ct, body = handle_add_symbol(symbol)
+                type_param = data.get('type', 'indian')
+                status, ct, body = handle_add_symbol(symbol, type_param)
                 self._send_cors(status, ct, body)
             except Exception as e:
                 self._send_cors(500, 'application/json',
@@ -159,7 +160,8 @@ class handler(BaseHTTPRequestHandler):
         if path.endswith('/stocks'):
             try:
                 symbol = query.get('symbol', [''])[0]
-                status, ct, body = handle_remove_symbol(symbol)
+                type_param = query.get('type', ['indian'])[0]
+                status, ct, body = handle_remove_symbol(symbol, type_param)
                 self._send_cors(status, ct, body)
             except Exception as e:
                 self._send_cors(500, 'application/json',

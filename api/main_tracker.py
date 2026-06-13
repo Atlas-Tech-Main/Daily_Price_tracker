@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(_ENV_PATH)
 
-from stocks_manager import load_symbols
+from stocks_manager import load_indian_symbols, load_global_symbols
 
 # ==========================================
 # CONFIGURATION
@@ -117,7 +117,7 @@ def run_main_tracker():
     tz = pytz.timezone(TIMEZONE)
     now = datetime.datetime.now(tz)
     
-    company_symbols = load_symbols()
+    company_symbols = load_indian_symbols() + load_global_symbols()
     all_symbols = company_symbols + INDEX_SYMBOLS
 
     target_slot = get_target_slot(now)

@@ -48,24 +48,50 @@ _DEFAULT_SYMBOLS = [
 ]
 
 
-def load_symbols() -> list[str]:
-    """Load symbols from MongoDB; seed with defaults if empty."""
+def load_indian_symbols() -> list[str]:
+    """Load Indian symbols from MongoDB; migrate old watchlist or seed with defaults if empty."""
     db_col = _get_db()
     if db_col is not None:
         try:
-            doc = db_col.find_one({"key": "watchlist"})
+            doc = db_col.find_one({"key": "watchlist_indian"})
             if doc and "symbols" in doc:
                 return doc["symbols"]
             else:
-                # SEED THE DATABASE: If database is connected but empty, save defaults
-                print("Database is empty. Seeding with default symbols...")
-                _save_symbols(list(_DEFAULT_SYMBOLS))
+                # Try migrating from old 'watchlist' key
+                old_doc = db_col.find_one({"key": "watchlist"})
+                if old_doc and "symbols" in old_doc:
+                    print("Found old watchlist key. Migrating to watchlist_indian...")
+                    syms = old_doc["symbols"]
+                    _save_indian_symbols(syms)
+                    return syms
+                
+                # SEED THE DATABASE
+                print("Database watchlist_indian is empty. Seeding with default symbols...")
+                _save_indian_symbols(list(_DEFAULT_SYMBOLS))
                 return list(_DEFAULT_SYMBOLS)
         except Exception as e:
-            print(f"Error loading from MongoDB: {e}")
+            print(f"Error loading Indian symbols from MongoDB: {e}")
 
-    # Fallback to defaults if MongoDB is unavailable or errors
+    # Fallback to defaults
     return list(_DEFAULT_SYMBOLS)
+
+
+def load_global_symbols() -> list[str]:
+    """Load Global symbols from MongoDB."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "watchlist_global"})
+            if doc and "symbols" in doc:
+                return doc["symbols"]
+        except Exception as e:
+            print(f"Error loading Global symbols from MongoDB: {e}")
+    return []
+
+
+def load_symbols() -> list[str]:
+    """Load all symbols combined (Indian + Global)."""
+    return load_indian_symbols() + load_global_symbols()
 
 
 def load_intraday_stock_emails() -> list[str]:
@@ -80,6 +106,32 @@ def load_intraday_stock_emails() -> list[str]:
             print(f"Error loading stock emails from MongoDB: {e}")
     # Fallback
     return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
+
+
+def load_intraday_indian_stock_emails() -> list[str]:
+    """Load Indian intraday stock alert emails; fallback to old combined list."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "intraday_stock_indian_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading Indian stock emails from MongoDB: {e}")
+    return load_intraday_stock_emails()
+
+
+def load_intraday_global_stock_emails() -> list[str]:
+    """Load Global intraday stock alert emails; fallback to old combined list."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "intraday_stock_global_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading Global stock emails from MongoDB: {e}")
+    return load_intraday_stock_emails()
 
 
 def load_intraday_index_emails() -> list[str]:
@@ -110,18 +162,58 @@ def load_weekly_emails() -> list[str]:
     return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
 
 
-def _save_symbols(symbols: list[str]):
-    """Persist symbols list to MongoDB."""
+def load_weekly_indian_emails() -> list[str]:
+    """Load Indian weekly report emails; fallback to old combined list."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "weekly_indian_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading Indian weekly emails from MongoDB: {e}")
+    return load_weekly_emails()
+
+
+def load_weekly_global_emails() -> list[str]:
+    """Load Global weekly report emails; fallback to old combined list."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "weekly_global_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading Global weekly emails from MongoDB: {e}")
+    return load_weekly_emails()
+
+
+def _save_indian_symbols(symbols: list[str]):
+    """Persist Indian symbols list to MongoDB."""
     db_col = _get_db()
     if db_col is not None:
         try:
             db_col.update_one(
-                {"key": "watchlist"},
+                {"key": "watchlist_indian"},
                 {"$set": {"symbols": symbols}},
                 upsert=True
             )
         except Exception as e:
-            print(f"Error saving to MongoDB: {e}")
+            print(f"Error saving Indian symbols to MongoDB: {e}")
+
+
+def _save_global_symbols(symbols: list[str]):
+    """Persist Global symbols list to MongoDB."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            db_col.update_one(
+                {"key": "watchlist_global"},
+                {"$set": {"symbols": symbols}},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"Error saving Global symbols to MongoDB: {e}")
 
 
 def validate_symbol(symbol: str) -> dict:
@@ -158,8 +250,13 @@ def validate_symbol(symbol: str) -> dict:
 
 def handle_get_stocks() -> tuple[int, str, bytes]:
     """Return current symbol list as JSON."""
-    symbols = load_symbols()
-    body = json.dumps({"symbols": symbols}).encode("utf-8")
+    indian = load_indian_symbols()
+    global_syms = load_global_symbols()
+    body = json.dumps({
+        "symbols": indian + global_syms,
+        "indian": indian,
+        "global": global_syms
+    }).encode("utf-8")
     return 200, "application/json", body
 
 
@@ -173,17 +270,21 @@ def handle_validate_symbol(symbol: str) -> tuple[int, str, bytes]:
     return 200, "application/json", body
 
 
-def handle_add_symbol(symbol: str) -> tuple[int, str, bytes]:
+def handle_add_symbol(symbol: str, type_param: str = "indian") -> tuple[int, str, bytes]:
     """Validate and add a symbol to the list."""
     if not symbol:
         body = json.dumps({"error": "symbol is required"}).encode("utf-8")
         return 400, "application/json", body
 
     symbol = symbol.strip().upper()
-    symbols = load_symbols()
+    is_global = (type_param == "global")
+    
+    indian = load_indian_symbols()
+    global_syms = load_global_symbols()
 
-    if symbol in symbols:
-        body = json.dumps({"error": f"'{symbol}' already exists in the list"}).encode("utf-8")
+    target_list = global_syms if is_global else indian
+    if symbol in target_list:
+        body = json.dumps({"error": f"'{symbol}' already exists in that list"}).encode("utf-8")
         return 409, "application/json", body
 
     validation = validate_symbol(symbol)
@@ -193,35 +294,51 @@ def handle_add_symbol(symbol: str) -> tuple[int, str, bytes]:
         }).encode("utf-8")
         return 422, "application/json", body
 
-    symbols.append(symbol)
-    _save_symbols(symbols)
+    if is_global:
+        global_syms.append(symbol)
+        _save_global_symbols(global_syms)
+    else:
+        indian.append(symbol)
+        _save_indian_symbols(indian)
 
     body = json.dumps({
         "message": f"'{symbol}' added successfully",
         "name": validation["name"],
-        "symbols": symbols
+        "symbols": indian + global_syms,
+        "indian": indian,
+        "global": global_syms
     }).encode("utf-8")
     return 200, "application/json", body
 
 
-def handle_remove_symbol(symbol: str) -> tuple[int, str, bytes]:
+def handle_remove_symbol(symbol: str, type_param: str = "indian") -> tuple[int, str, bytes]:
     """Remove a symbol from the list."""
     if not symbol:
         body = json.dumps({"error": "symbol is required"}).encode("utf-8")
         return 400, "application/json", body
 
     symbol = symbol.strip().upper()
-    symbols = load_symbols()
+    is_global = (type_param == "global")
+    
+    indian = load_indian_symbols()
+    global_syms = load_global_symbols()
 
-    if symbol not in symbols:
-        body = json.dumps({"error": f"'{symbol}' not found in list"}).encode("utf-8")
+    target_list = global_syms if is_global else indian
+    if symbol not in target_list:
+        body = json.dumps({"error": f"'{symbol}' not found in that list"}).encode("utf-8")
         return 404, "application/json", body
 
-    symbols.remove(symbol)
-    _save_symbols(symbols)
+    if is_global:
+        global_syms.remove(symbol)
+        _save_global_symbols(global_syms)
+    else:
+        indian.remove(symbol)
+        _save_indian_symbols(indian)
 
     body = json.dumps({
         "message": f"'{symbol}' removed successfully",
-        "symbols": symbols
+        "symbols": indian + global_syms,
+        "indian": indian,
+        "global": global_syms
     }).encode("utf-8")
     return 200, "application/json", body

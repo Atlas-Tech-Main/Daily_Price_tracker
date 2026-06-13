@@ -15,7 +15,12 @@ import pandas as pd
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(_ENV_PATH)
 
-from stocks_manager import load_symbols, load_weekly_emails
+from stocks_manager import (
+    load_indian_symbols,
+    load_global_symbols,
+    load_weekly_indian_emails,
+    load_weekly_global_emails
+)
 
 
 
@@ -105,9 +110,10 @@ def calculate_single_return(symbol):
     except Exception as e:
         return {"ticker": symbol, "error": str(e)}
 
-def get_all_weekly_returns():
-    company_symbols = load_symbols()
+def get_weekly_returns(company_symbols):
     results = []
+    if not company_symbols:
+        return results
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(calculate_single_return, sym): sym for sym in company_symbols}
         for future in futures:
@@ -117,7 +123,7 @@ def get_all_weekly_returns():
 # ==========================================
 # EMAIL LOGIC
 # ==========================================
-def format_html_email(results):
+def format_html_email(results, report_title="Weekly Return Report"):
     current_date, _ = get_target_dates()
     html = f"""
     <html>
@@ -145,7 +151,7 @@ def format_html_email(results):
                 <img src="cid:logo" alt="Atlas Capital" style="max-height: 60px;" />
               </td>
               <td style="border-bottom: none; text-align: left; padding: 24px 32px 24px 100px; vertical-align: middle;">
-                <h2 style="margin: 0; color: #314568; font-size: 15px;">Weekly Return Report</h2>
+                <h2 style="margin: 0; color: #314568; font-size: 15px;">{report_title}</h2>
                 <p style="margin: 6px 0 0; color: #607CA4; font-size: 10px;">Week Ending {current_date}</p>
               </td>
             </tr>
@@ -187,19 +193,18 @@ def format_html_email(results):
     """
     return html
 
-def send_email(html_content):
+def send_email(html_content, to_emails, subject_prefix="Weekly Stock Returns"):
     if not SMTP_EMAIL or not SMTP_PASSWORD:
         print("Email configuration missing. Skipping email send.")
         return False, "SMTP variables not set"
         
-    to_emails = load_weekly_emails()
     if not to_emails:
         print("No recipient emails configured.")
         return False, "TO_EMAIL variable not set or invalid"
         
     try:
         msg = MIMEMultipart("related")
-        msg["Subject"] = f"Weekly Stock Returns - {datetime.today().date()}"
+        msg["Subject"] = f"{subject_prefix} - {datetime.today().date()}"
         msg["From"] = SMTP_EMAIL
         msg["To"] = ", ".join(to_emails)
 
@@ -211,10 +216,8 @@ def send_email(html_content):
             logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logo.png")
             with open(logo_path, "rb") as f:
                 img_data = f.read()
-            # Do NOT pass name="logo.png", to prevent it appearing as an attachment
             image = MIMEImage(img_data)
             image.add_header('Content-ID', '<logo>')
-            # Do NOT pass filename="logo.png" here either
             image.add_header('Content-Disposition', 'inline')
             msg.attach(image)
         except Exception as e:
@@ -232,20 +235,44 @@ def send_email(html_content):
 
 def run_weekly_report():
     try:
-        print("Fetching weekly returns...")
-        results = get_all_weekly_returns()
+        print("Fetching Indian weekly returns...")
+        indian_symbols = load_indian_symbols()
+        indian_results = get_weekly_returns(indian_symbols)
         
-        print("Formatting email...")
-        html_content = format_html_email(results)
-        
-        print("Sending email...")
-        email_success, email_msg = send_email(html_content)
-        
+        indian_sent = False
+        indian_msg = "No Indian stocks to report"
+        if indian_results:
+            print("Formatting Indian email...")
+            indian_html = format_html_email(indian_results, "Weekly Indian Stock Returns")
+            print("Sending Indian email...")
+            to_indian_emails = load_weekly_indian_emails()
+            indian_sent, indian_msg = send_email(indian_html, to_indian_emails, "Weekly Indian Stock Returns")
+
+        print("Fetching Global weekly returns...")
+        global_symbols = load_global_symbols()
+        global_results = get_weekly_returns(global_symbols)
+
+        global_sent = False
+        global_msg = "No Global stocks to report"
+        if global_results:
+            print("Formatting Global email...")
+            global_html = format_html_email(global_results, "Weekly Global Stock Returns")
+            print("Sending Global email...")
+            to_global_emails = load_weekly_global_emails()
+            global_sent, global_msg = send_email(global_html, to_global_emails, "Weekly Global Stock Returns")
+
         response_data = {
             "status": "success",
-            "symbols_processed": len(results),
-            "email_sent": email_success,
-            "email_message": email_msg
+            "indian": {
+                "symbols_processed": len(indian_results),
+                "email_sent": indian_sent,
+                "email_message": indian_msg
+            },
+            "global": {
+                "symbols_processed": len(global_results),
+                "email_sent": global_sent,
+                "email_message": global_msg
+            }
         }
         return response_data
         

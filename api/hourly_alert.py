@@ -28,7 +28,13 @@ from http.server import BaseHTTPRequestHandler
 from dotenv import load_dotenv
 import json
 import requests
-from stocks_manager import load_symbols, load_intraday_stock_emails, load_intraday_index_emails
+from stocks_manager import (
+    load_indian_symbols,
+    load_global_symbols,
+    load_intraday_indian_stock_emails,
+    load_intraday_global_stock_emails,
+    load_intraday_index_emails
+)
 
 # ── Load env vars ──────────────────────────────────────────────────────────────
 _ENV_PATH = os.path.join(
@@ -130,10 +136,9 @@ def _fetch_symbol(symbol: str, today_date) -> dict | None:
         return None
 
 
-def fetch_all(today_date) -> list[dict]:
+def fetch_all(today_date, indian_symbols: list[str], global_symbols: list[str]) -> list[dict]:
     """Fetches data for all symbols in parallel and returns raw results."""
-    company_symbols = load_symbols()
-    all_symbols = company_symbols + INDEX_SYMBOLS
+    all_symbols = indian_symbols + global_symbols + INDEX_SYMBOLS
     results = []
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {
@@ -325,21 +330,28 @@ def run_hourly_alert():
     logging.info(f"[hourly_alert] Triggered at {now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
     # ── Fetch all symbols ──────────────────────────────────────────────────
-    all_data = fetch_all(today)
+    indian_symbols = load_indian_symbols()
+    global_symbols = load_global_symbols()
+    all_data = fetch_all(today, indian_symbols, global_symbols)
     logging.info(f"[hourly_alert] Fetched data for {len(all_data)} symbol(s).")
 
-    # ── Evaluate which symbols breach both thresholds ──────────────────────
+    # ── Evaluate which symbols breach thresholds ──────────────────────
     alerts = evaluate_alerts(all_data, today)
 
     # ── Separate stock and index alerts ────────────────────────────────────
-    company_symbols = load_symbols()
-    stock_alerts = [a for a in alerts if a["symbol"] in company_symbols]
+    indian_alerts = [a for a in alerts if a["symbol"] in indian_symbols]
+    global_alerts = [a for a in alerts if a["symbol"] in global_symbols]
     index_alerts = [a for a in alerts if a["symbol"] in INDEX_SYMBOLS]
 
-    stock_email_sent = False
-    if stock_alerts:
-        to_emails = load_intraday_stock_emails()
-        stock_email_sent = send_hourly_alert_email(stock_alerts, now, to_emails, "Stock")
+    indian_email_sent = False
+    if indian_alerts:
+        to_emails = load_intraday_indian_stock_emails()
+        indian_email_sent = send_hourly_alert_email(indian_alerts, now, to_emails, "Indian Stock")
+
+    global_email_sent = False
+    if global_alerts:
+        to_emails = load_intraday_global_stock_emails()
+        global_email_sent = send_hourly_alert_email(global_alerts, now, to_emails, "Global Stock")
 
     index_email_sent = False
     if index_alerts:
@@ -351,9 +363,11 @@ def run_hourly_alert():
         "timestamp":       now.isoformat(),
         "symbols_checked": len(all_data),
         "alerts_fired":    len(alerts),
-        "stock_alerts":    len(stock_alerts),
+        "indian_alerts":   len(indian_alerts),
+        "global_alerts":   len(global_alerts),
         "index_alerts":    len(index_alerts),
-        "stock_email_sent": stock_email_sent,
+        "indian_email_sent": indian_email_sent,
+        "global_email_sent": global_email_sent,
         "index_email_sent": index_email_sent,
     }
     return response
