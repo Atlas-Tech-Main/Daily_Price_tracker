@@ -68,6 +68,48 @@ def load_symbols() -> list[str]:
     return list(_DEFAULT_SYMBOLS)
 
 
+def load_intraday_stock_emails() -> list[str]:
+    """Load intraday stock alert emails from MongoDB; fallback to TO_EMAIL env."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "intraday_stock_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading stock emails from MongoDB: {e}")
+    # Fallback
+    return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
+
+
+def load_intraday_index_emails() -> list[str]:
+    """Load intraday index alert emails from MongoDB; fallback to TO_EMAIL env."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "intraday_index_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading index emails from MongoDB: {e}")
+    # Fallback
+    return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
+
+
+def load_weekly_emails() -> list[str]:
+    """Load weekly report emails from MongoDB; fallback to TO_EMAIL env."""
+    db_col = _get_db()
+    if db_col is not None:
+        try:
+            doc = db_col.find_one({"key": "weekly_emails"})
+            if doc and "list" in doc and doc["list"]:
+                return doc["list"]
+        except Exception as e:
+            print(f"Error loading weekly emails from MongoDB: {e}")
+    # Fallback
+    return [e.strip() for e in os.environ.get("TO_EMAIL", "").split(",") if e.strip()]
+
+
 def _save_symbols(symbols: list[str]):
     """Persist symbols list to MongoDB."""
     db_col = _get_db()

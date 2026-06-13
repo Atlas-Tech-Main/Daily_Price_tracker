@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler
 from dotenv import load_dotenv
 import json
 import requests
-from stocks_manager import load_symbols
+from stocks_manager import load_symbols, load_intraday_stock_emails, load_intraday_index_emails
 
 # ── Load env vars ──────────────────────────────────────────────────────────────
 _ENV_PATH = os.path.join(
@@ -39,7 +39,7 @@ load_dotenv(_ENV_PATH)
 logging.basicConfig(level=logging.INFO)
 
 # Global variable for best-effort cooldown in serverless environment
-_LAST_EMAIL_SENT_TIME = None
+_LAST_EMAIL_SENT_TIME = {}
 
 
 # ==========================================
@@ -60,11 +60,7 @@ SMTP_SERVER   = os.environ.get("SMTP_SERVER",   "smtp.gmail.com")
 SMTP_PORT     = int(os.environ.get("SMTP_PORT", 587))
 SMTP_EMAIL    = os.environ.get("SMTP_EMAIL",    "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-TO_EMAILS     = [
-    e.strip()
-    for e in os.environ.get("TO_EMAIL", "").split(",")
-    if e.strip()
-]
+# TO_EMAILS has been replaced with dynamically loaded lists inside run_hourly_alert
 
 
 # ==========================================
@@ -186,25 +182,26 @@ def evaluate_alerts(all_data: list[dict], today_date: datetime.date) -> list[dic
 # ==========================================
 # EMAIL
 # ==========================================
-def send_hourly_alert_email(alerts: list[dict], now_dt: datetime.datetime) -> bool:
+def send_hourly_alert_email(alerts: list[dict], now_dt: datetime.datetime, to_emails: list[str], alert_type: str) -> bool:
     """
-    Sends ONE HTML alert email to ALL configured recipients.
+    Sends ONE HTML alert email to ALL configured recipients for the given alert type.
     Each recipient receives the same message (BCC-style via sendmail list).
     Returns True on success, False on failure.
     """
     global _LAST_EMAIL_SENT_TIME
     
-    if _LAST_EMAIL_SENT_TIME is not None:
-        elapsed = now_dt - _LAST_EMAIL_SENT_TIME
+    last_sent = _LAST_EMAIL_SENT_TIME.get(alert_type)
+    if last_sent is not None:
+        elapsed = now_dt - last_sent
         if elapsed < datetime.timedelta(minutes=1):
-            logging.info(f"[hourly_alert] Cooldown active (1 min). Skipping email. Last sent at {_LAST_EMAIL_SENT_TIME.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logging.info(f"[hourly_alert] Cooldown active (1 min) for {alert_type}. Skipping email.")
             return False
 
     if not SMTP_EMAIL or not SMTP_PASSWORD:
         logging.warning("[hourly_alert] SMTP credentials missing — skipping email.")
         return False
-    if not TO_EMAILS:
-        logging.warning("[hourly_alert] No recipients configured — skipping email.")
+    if not to_emails:
+        logging.warning(f"[hourly_alert] No recipients configured for {alert_type} alerts — skipping email.")
         return False
 
     date_str = now_dt.strftime("%Y-%m-%d")
@@ -223,6 +220,10 @@ def send_hourly_alert_email(alerts: list[dict], now_dt: datetime.datetime) -> bo
           <td style='text-align:right;color:#0D1B2A;padding:9px 14px;border-bottom:1px solid #D1DCE2;font-family:"Montserrat",sans-serif;'>{a['volume']:,}</td>
           <td style='text-align:right;font-weight:bold;color:{color};padding:9px 14px;border-bottom:1px solid #D1DCE2;font-family:"Montserrat",sans-serif;'>{direction} {abs(a['pct_change']):.2f}%</td>
         </tr>"""
+
+    # Format header text and count label based on alert_type
+    header_title = f"&#9200; Intraday {alert_type} Alert &mdash; {date_str} @ {time_str}"
+    item_label = "stock(s)" if alert_type == "Stock" else "index(es)"
 
     html = f"""
     <html><head><meta charset='UTF-8'>
@@ -243,9 +244,9 @@ def send_hourly_alert_email(alerts: list[dict], now_dt: datetime.datetime) -> bo
                       <img src="https://atlascapital.in/wp-content/uploads/2025/02/Logo-blue-.png" alt="Atlas Capital" style="max-height: 60px;" />
                     </td>
                     <td style='vertical-align:middle;text-align:left;padding-left:100px;'>
-                      <h2 style='margin:0;color:#314568;font-size:15px;font-family:"Montserrat",sans-serif;'>&#9200; Intraday Price Alert &mdash; {date_str} @ {time_str}</h2>
+                      <h2 style='margin:0;color:#314568;font-size:15px;font-family:"Montserrat",sans-serif;'>{header_title}</h2>
                       <p style='margin:6px 0 0;color:#607CA4;font-size:10px;font-family:"Montserrat",sans-serif;'>
-                        {len(alerts)} stock(s) moved &ge;{HOURLY_PRICE_CHANGE_THRESHOLD}% from previous day&rsquo;s close
+                        {len(alerts)} {item_label} moved &ge;{HOURLY_PRICE_CHANGE_THRESHOLD}% from previous day&rsquo;s close
                         with volume exceeding their respective thresholds
                       </p>
                     </td>
@@ -287,11 +288,11 @@ def send_hourly_alert_email(alerts: list[dict], now_dt: datetime.datetime) -> bo
     try:
         msg = MIMEMultipart("related")
         msg["Subject"] = (
-            f"\U0001f514 Intraday Alert: {len(alerts)} stock(s) moved "
+            f"\U0001f514 Intraday {alert_type} Alert: {len(alerts)} {item_label} moved "
             f">{HOURLY_PRICE_CHANGE_THRESHOLD}% from prev close | {date_str} {time_str}"
         )
         msg["From"] = SMTP_EMAIL
-        msg["To"]   = ", ".join(TO_EMAILS)
+        msg["To"]   = ", ".join(to_emails)
 
         msg_alt = MIMEMultipart("alternative")
         msg.attach(msg_alt)
@@ -300,19 +301,18 @@ def send_hourly_alert_email(alerts: list[dict], now_dt: datetime.datetime) -> bo
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
-        # sendmail with a list delivers one copy to every address in the list
-        server.sendmail(SMTP_EMAIL, TO_EMAILS, msg.as_string())
+        server.sendmail(SMTP_EMAIL, to_emails, msg.as_string())
         server.quit()
 
-        _LAST_EMAIL_SENT_TIME = now_dt
+        _LAST_EMAIL_SENT_TIME[alert_type] = now_dt
 
         logging.info(
-            f"[hourly_alert] Email sent to {len(TO_EMAILS)} recipient(s) "
-            f"for {len(alerts)} stock(s)."
+            f"[hourly_alert] {alert_type} email sent to {len(to_emails)} recipient(s) "
+            f"for {len(alerts)} {item_label}."
         )
         return True
     except Exception as e:
-        logging.error(f"[hourly_alert] Failed to send email: {e}")
+        logging.error(f"[hourly_alert] Failed to send {alert_type} email: {e}")
         return False
 
 
@@ -331,18 +331,30 @@ def run_hourly_alert():
     # ── Evaluate which symbols breach both thresholds ──────────────────────
     alerts = evaluate_alerts(all_data, today)
 
-    # ── Send ONE batched email if any alerts ───────────────────────────────
-    email_sent = False
-    if alerts:
-        email_sent = send_hourly_alert_email(alerts, now)
+    # ── Separate stock and index alerts ────────────────────────────────────
+    company_symbols = load_symbols()
+    stock_alerts = [a for a in alerts if a["symbol"] in company_symbols]
+    index_alerts = [a for a in alerts if a["symbol"] in INDEX_SYMBOLS]
+
+    stock_email_sent = False
+    if stock_alerts:
+        to_emails = load_intraday_stock_emails()
+        stock_email_sent = send_hourly_alert_email(stock_alerts, now, to_emails, "Stock")
+
+    index_email_sent = False
+    if index_alerts:
+        to_emails = load_intraday_index_emails()
+        index_email_sent = send_hourly_alert_email(index_alerts, now, to_emails, "Index")
 
     response = {
         "status":          "ok",
         "timestamp":       now.isoformat(),
         "symbols_checked": len(all_data),
         "alerts_fired":    len(alerts),
-        "alert_symbols":   [a["symbol"] for a in alerts],
-        "email_sent":      email_sent,
+        "stock_alerts":    len(stock_alerts),
+        "index_alerts":    len(index_alerts),
+        "stock_email_sent": stock_email_sent,
+        "index_email_sent": index_email_sent,
     }
     return response
 

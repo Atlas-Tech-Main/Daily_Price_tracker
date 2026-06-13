@@ -15,7 +15,7 @@ import pandas as pd
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(_ENV_PATH)
 
-from stocks_manager import load_symbols
+from stocks_manager import load_symbols, load_weekly_emails
 
 
 
@@ -24,11 +24,7 @@ SMTP_SERVER   = os.environ.get("SMTP_SERVER",   "smtp.gmail.com")
 SMTP_PORT     = int(os.environ.get("SMTP_PORT", 587))
 SMTP_EMAIL    = os.environ.get("SMTP_EMAIL",    "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-TO_EMAILS     = [
-    e.strip()
-    for e in os.environ.get("TO_EMAIL", "").split(",")
-    if e.strip()
-]
+# TO_EMAILS has been replaced with dynamically loaded lists inside send_email
 # ==========================================
 # WEEKLY RETURN LOGIC  (via Yahoo Finance)
 # ==========================================
@@ -196,7 +192,8 @@ def send_email(html_content):
         print("Email configuration missing. Skipping email send.")
         return False, "SMTP variables not set"
         
-    if not TO_EMAILS:
+    to_emails = load_weekly_emails()
+    if not to_emails:
         print("No recipient emails configured.")
         return False, "TO_EMAIL variable not set or invalid"
         
@@ -204,7 +201,7 @@ def send_email(html_content):
         msg = MIMEMultipart("related")
         msg["Subject"] = f"Weekly Stock Returns - {datetime.today().date()}"
         msg["From"] = SMTP_EMAIL
-        msg["To"] = ", ".join(TO_EMAILS)
+        msg["To"] = ", ".join(to_emails)
 
         msg_alt = MIMEMultipart("alternative")
         msg.attach(msg_alt)
@@ -226,7 +223,7 @@ def send_email(html_content):
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
-        server.sendmail(SMTP_EMAIL, TO_EMAILS, msg.as_string())
+        server.sendmail(SMTP_EMAIL, to_emails, msg.as_string())
         server.quit()
         return True, "Email sent successfully"
     except Exception as e:
