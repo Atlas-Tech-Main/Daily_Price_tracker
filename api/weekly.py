@@ -243,10 +243,10 @@ def run_weekly_report():
         indian_msg = "No Indian stocks to report"
         if indian_results:
             print("Formatting Indian email...")
-            indian_html = format_html_email(indian_results, "Weekly Indian Stock Returns")
+            indian_html = format_html_email(indian_results, "Weekly Investor Relation Stocks Returns")
             print("Sending Indian email...")
             to_indian_emails = load_indian_stock_emails()
-            indian_sent, indian_msg = send_email(indian_html, to_indian_emails, "Weekly Indian Stock Returns")
+            indian_sent, indian_msg = send_email(indian_html, to_indian_emails, "Weekly Investor Relation Stocks Returns")
 
         print("Fetching Global weekly returns...")
         global_symbols = load_global_symbols()
@@ -256,10 +256,10 @@ def run_weekly_report():
         global_msg = "No Global stocks to report"
         if global_results:
             print("Formatting Global email...")
-            global_html = format_html_email(global_results, "Weekly Global Stock Returns")
+            global_html = format_html_email(global_results, "Investment Research Weekly Stocks Returns")
             print("Sending Global email...")
             to_global_emails = load_global_stock_emails()
-            global_sent, global_msg = send_email(global_html, to_global_emails, "Weekly Global Stock Returns")
+            global_sent, global_msg = send_email(global_html, to_global_emails, "Investment Research Weekly Stocks Returns")
 
         response_data = {
             "status": "success",
