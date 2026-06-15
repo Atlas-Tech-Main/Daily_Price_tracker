@@ -344,12 +344,12 @@ def run_hourly_alert():
     indian_email_sent = False
     if indian_alerts:
         to_emails = load_indian_stock_emails()
-        indian_email_sent = send_hourly_alert_email(indian_alerts, now, to_emails, "Indian Stock")
+        indian_email_sent = send_hourly_alert_email(indian_alerts, now, to_emails, "Investor Relation Stock")
 
     global_email_sent = False
     if global_alerts:
         to_emails = load_global_stock_emails()
-        global_email_sent = send_hourly_alert_email(global_alerts, now, to_emails, "Global Stock")
+        global_email_sent = send_hourly_alert_email(global_alerts, now, to_emails, "Investment Research Stock")
 
     response = {
         "status":          "ok",
